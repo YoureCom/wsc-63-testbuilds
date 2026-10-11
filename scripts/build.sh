@@ -34,5 +34,13 @@ tar -tf "$SRC/wcfsetup/install/packages/com.woltlab.wcf.tar" | grep -qx 'package
 # 3) WCFSetup.tar.gz (install/ + setup/) and install.php
 tar -czf "$OUT/WCFSetup.tar.gz" -C "$SRC/wcfsetup" install setup
 cp "$SRC/wcfsetup/install.php" "$SRC/wcfsetup/test.php" "$OUT/"
-( cd "$OUT" && sha256sum WCFSetup.tar.gz install.php test.php > SHA256SUMS )
+
+# one archive with everything the installation needs (needs `zip`, present on the CI runner)
+BUNDLE="WoltLabSuite-6.3-testbuild.zip"
+if command -v zip >/dev/null 2>&1; then
+  (cd "$OUT" && rm -f "$BUNDLE" && zip -q -9 "$BUNDLE" install.php test.php WCFSetup.tar.gz)
+else
+  echo "zip not found, skipping $BUNDLE" >&2
+fi
+( cd "$OUT" && sha256sum WCFSetup.tar.gz install.php test.php $( [ -f "$BUNDLE" ] && echo "$BUNDLE" ) > SHA256SUMS )
 ls -la "$OUT"

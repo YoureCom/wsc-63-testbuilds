@@ -58,14 +58,23 @@ jobs:
 
       - name: Smoke test (archive contains the core package)
         if: steps.src.outputs.changed == 'true' || inputs.force == true
-        run: tar -tzf out/WCFSetup.tar.gz | grep -q '^install/packages/com.woltlab.wcf.tar$'
+        run: |
+          tar -tzf out/WCFSetup.tar.gz | grep -q '^install/packages/com.woltlab.wcf.tar$'
+          unzip -Z1 out/WoltLabSuite-6.3-testbuild.zip | sort | tr '\n' ' ' | grep -qx 'WCFSetup.tar.gz install.php test.php '
 
       - name: Publish pre-release
         if: steps.src.outputs.changed == 'true' || inputs.force == true
         run: |
-          gh release create "${{ steps.src.outputs.tag }}" out/WCFSetup.tar.gz out/install.php out/test.php out/SHA256SUMS \
-            --prerelease --title "WoltLab Suite 6.3 alpha ${{ steps.src.outputs.sha }}" \
-            --notes "Unofficial community test build of WoltLab/WCF branch 6.3 at commit ${{ steps.src.outputs.sha }}. Not for production. Requires PHP 8.4.23 to 8.5.x and HTTPS."
+          tag="${{ steps.src.outputs.tag }}"
+          files="out/WoltLabSuite-6.3-testbuild.zip out/WCFSetup.tar.gz out/install.php out/test.php out/SHA256SUMS"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            # a forced rerun of the same commit on the same day replaces the files
+            gh release upload "$tag" $files --clobber
+          else
+            gh release create "$tag" $files \
+              --prerelease --title "WoltLab Suite 6.3 alpha ${{ steps.src.outputs.sha }}" \
+              --notes "Unofficial community test build of WoltLab/WCF branch 6.3 at commit ${{ steps.src.outputs.sha }}. Not for production. Requires PHP 8.4.23 to 8.5.x and HTTPS. WoltLabSuite-6.3-testbuild.zip contains install.php, test.php and WCFSetup.tar.gz."
+          fi
           bash scripts/prune-releases.sh
         env:
           GH_TOKEN: ${{ github.token }}

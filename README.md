@@ -6,8 +6,9 @@ This is a community project by [YoureCom](https://yourecom.de) and is not affili
 
 ## Install
 
-1. Pick the newest pre-release under *Releases*.
-2. Upload `install.php` and `WCFSetup.tar.gz` to an empty web directory (same folder).
+1. Pick the newest pre-release under *Releases* and download `WoltLabSuite-6.3-testbuild.zip`.
+2. Unpack it and upload `install.php`, `test.php` and `WCFSetup.tar.gz` to an empty web directory (same folder).
+   The files are also available one by one in the release.
 3. Open `https://<your-domain>/install.php` and follow the wizard.
 
 Requirements: PHP 8.4.23 to 8.5.x, MySQL/MariaDB, **HTTPS** (the wizard refuses plain HTTP).
