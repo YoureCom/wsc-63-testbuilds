@@ -6,20 +6,30 @@ set -euo pipefail
 SRC="$(cd "$1" && pwd)"; OUT="$2"; mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 PKG="$(mktemp -d)"; trap 'rm -rf "$PKG" "$SRC/wcfsetup/install/packages/com.woltlab.wcf.tar"' EXIT
 
+# Packs the content of a directory without a "./" prefix: WoltLab looks up "package.xml", not "./package.xml".
+pack() { # <archive> <directory> [tar options]
+  local archive="$1" dir="$2"; shift 2
+  (cd "$dir" && tar -cf "$archive" "$@" -- $(ls -A))
+}
+
 # 1) JS bundles
 if [ "${SKIP_JS:-0}" != "1" ]; then (cd "$SRC/extra" && node _buildCore.js); fi
 
 # 2) Core package com.woltlab.wcf.tar
 cp -r "$SRC/com.woltlab.wcf/." "$PKG/"
-tar -cf "$PKG/files.tar"        -C "$SRC/wcfsetup/install/files" --exclude=./acp/templates .
-tar -cf "$PKG/acptemplates.tar" -C "$SRC/wcfsetup/install/files/acp/templates" .
-tar -cf "$PKG/templates.tar"    -C "$SRC/com.woltlab.wcf/templates" .
+pack "$PKG/files.tar"        "$SRC/wcfsetup/install/files" --exclude=acp/templates
+pack "$PKG/acptemplates.tar" "$SRC/wcfsetup/install/files/acp/templates"
+pack "$PKG/templates.tar"    "$SRC/com.woltlab.wcf/templates"
 rm -rf "$PKG/templates"
 mkdir -p "$PKG/language" "$PKG/acp/database"
 cp "$SRC"/wcfsetup/install/lang/*.xml "$PKG/language/"
 cp "$SRC/wcfsetup/setup/db/install_com.woltlab.wcf.php" "$PKG/acp/database/"
 mkdir -p "$SRC/wcfsetup/install/packages"
-tar -cf "$SRC/wcfsetup/install/packages/com.woltlab.wcf.tar" -C "$PKG" .
+pack "$SRC/wcfsetup/install/packages/com.woltlab.wcf.tar" "$PKG"
+
+# Self-check: entries must not start with "./"
+if tar -tf "$SRC/wcfsetup/install/packages/com.woltlab.wcf.tar" | grep -q '^\./'; then echo "package entries have a ./ prefix" >&2; exit 1; fi
+tar -tf "$SRC/wcfsetup/install/packages/com.woltlab.wcf.tar" | grep -qx 'package.xml'
 
 # 3) WCFSetup.tar.gz (install/ + setup/) and install.php
 tar -czf "$OUT/WCFSetup.tar.gz" -C "$SRC/wcfsetup" install setup
