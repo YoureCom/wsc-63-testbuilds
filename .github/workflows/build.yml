@@ -1,0 +1,71 @@
+name: Build WoltLab Suite 6.3 test build
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Build even if the source commit is unchanged"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch WoltLab source (branch 6.3)
+        id: src
+        run: |
+          git clone --depth 1 --branch 6.3 https://github.com/WoltLab/WCF.git WCF
+          sha="$(git -C WCF rev-parse --short=10 HEAD)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "tag=6.3-alpha-$(date -u +%Y%m%d)-$sha" >> "$GITHUB_OUTPUT"
+          if gh release list --limit 200 --json tagName --jq '.[].tagName' | grep -q -- "-$sha$"; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Stop when unchanged
+        if: steps.src.outputs.changed == 'false' && inputs.force != true
+        run: echo "Source commit ${{ steps.src.outputs.sha }} already built."
+
+      - uses: actions/setup-node@v4
+        if: steps.src.outputs.changed == 'true' || inputs.force == true
+        with:
+          node-version: 22
+
+      - uses: shivammathur/setup-php@v2
+        if: steps.src.outputs.changed == 'true' || inputs.force == true
+        with:
+          php-version: "8.5"
+
+      - name: Build
+        if: steps.src.outputs.changed == 'true' || inputs.force == true
+        run: |
+          (cd WCF/extra && npm ci)
+          bash scripts/build.sh WCF out
+          php -l out/install.php
+
+      - name: Smoke test (archive contains the core package)
+        if: steps.src.outputs.changed == 'true' || inputs.force == true
+        run: tar -tzf out/WCFSetup.tar.gz | grep -q '^install/packages/com.woltlab.wcf.tar$'
+
+      - name: Publish pre-release
+        if: steps.src.outputs.changed == 'true' || inputs.force == true
+        run: |
+          gh release create "${{ steps.src.outputs.tag }}" out/WCFSetup.tar.gz out/install.php out/test.php out/SHA256SUMS \
+            --prerelease --title "WoltLab Suite 6.3 alpha ${{ steps.src.outputs.sha }}" \
+            --notes "Unofficial community test build of WoltLab/WCF branch 6.3 at commit ${{ steps.src.outputs.sha }}. Not for production. Requires PHP 8.4.23 to 8.5.x and HTTPS."
+          bash scripts/prune-releases.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
