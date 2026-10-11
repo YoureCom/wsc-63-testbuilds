@@ -21,3 +21,11 @@ already built, runs `scripts/build.sh` (JS build, core package, `WCFSetup.tar.gz
 pre-release `6.3-alpha-<date>-<commit>`. `scripts/prune-releases.sh` keeps the last 7 builds plus one per week.
 
 Report bugs in the build here. Bugs in the Suite itself belong to the Suite.
+
+## Stable releases
+
+`.github/workflows/build-release.yml` checks every 6 hours for a new release tag (`6.2.x`) of
+[WoltLab/WCF](https://github.com/WoltLab/WCF) and publishes it as a release named like the tag, with
+`WoltLabSuite-<tag>.zip` (same content as the test build bundle) and `SHA256SUMS`. Release tags already ship the
+compiled JavaScript, so no JS build runs. To follow another series (e.g. 6.3 after its release), add it to the
+`series` matrix of that workflow.

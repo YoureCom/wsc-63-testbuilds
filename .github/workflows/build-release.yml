@@ -1,0 +1,79 @@
+name: Build WoltLab Suite release
+
+# Builds every new stable release tag (x.y.z) of the listed series from WoltLab/WCF.
+# To follow a new series (e.g. 6.3 once it is released), add it to the matrix.
+on:
+  schedule:
+    - cron: "41 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Build this WoltLab/WCF tag instead of the newest one (e.g. 6.2.8)"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        series: ["6.2"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find the newest release tag
+        id: src
+        run: |
+          series="${{ matrix.series }}"
+          tag="${{ inputs.tag }}"
+          if [ -z "$tag" ]; then
+            tag="$(git ls-remote --tags --refs https://github.com/WoltLab/WCF.git "refs/tags/${series}.*" \
+              | sed 's#.*refs/tags/##' | grep -E "^${series//./\\.}\.[0-9]+$" | sort -V | tail -n 1)"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [ -z "$tag" ] || gh release view "$tag" >/dev/null 2>&1; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Nothing to do
+        if: steps.src.outputs.build == 'false'
+        run: echo "Release ${{ steps.src.outputs.tag }} is already built or does not exist."
+
+      - uses: shivammathur/setup-php@v2
+        if: steps.src.outputs.build == 'true'
+        with:
+          php-version: "8.4"
+
+      - name: Build
+        if: steps.src.outputs.build == 'true'
+        run: |
+          tag="${{ steps.src.outputs.tag }}"
+          git clone --depth 1 --branch "$tag" https://github.com/WoltLab/WCF.git WCF
+          # release tags ship the compiled JS, so no JS build is needed
+          SKIP_JS=1 BUNDLE="WoltLabSuite-${tag}.zip" bash scripts/build.sh WCF out
+          php -l out/install.php
+
+      - name: Smoke test (archive contains the core package)
+        if: steps.src.outputs.build == 'true'
+        run: |
+          tar -tzf out/WCFSetup.tar.gz | grep -q '^install/packages/com.woltlab.wcf.tar$'
+          unzip -Z1 "out/WoltLabSuite-${{ steps.src.outputs.tag }}.zip" | sort | tr '\n' ' ' | grep -qx 'WCFSetup.tar.gz install.php test.php '
+
+      - name: Publish release
+        if: steps.src.outputs.build == 'true'
+        run: |
+          tag="${{ steps.src.outputs.tag }}"
+          gh release create "$tag" "out/WoltLabSuite-${tag}.zip" out/SHA256SUMS \
+            --title "WoltLab Suite ${tag}" \
+            --notes "Unofficial community build of WoltLab/WCF tag ${tag} (LGPL-2.1). The ZIP contains install.php, test.php and WCFSetup.tar.gz: unpack it into an empty web directory and open install.php over HTTPS. Not affiliated with WoltLab GmbH."
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds WCFSetup.tar.gz + install.php from a WoltLab/WCF checkout.
-# Usage: build.sh <WCF checkout> <output dir>
+# Usage: [BUNDLE=<zip name>] build.sh <WCF checkout> <output dir>
 # Requires `npm ci` in <checkout>/extra beforehand (skip the JS build with SKIP_JS=1).
 set -euo pipefail
 SRC="$(cd "$1" && pwd)"; OUT="$2"; mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
@@ -23,7 +23,10 @@ pack "$PKG/templates.tar"    "$SRC/com.woltlab.wcf/templates"
 rm -rf "$PKG/templates"
 mkdir -p "$PKG/language" "$PKG/acp/database"
 cp "$SRC"/wcfsetup/install/lang/*.xml "$PKG/language/"
-cp "$SRC/wcfsetup/setup/db/install_com.woltlab.wcf.php" "$PKG/acp/database/"
+# 6.3 installs the schema from a PHP file; 6.2 has setup/db/install.sql in WCFSetup.tar.gz instead
+if [ -f "$SRC/wcfsetup/setup/db/install_com.woltlab.wcf.php" ]; then
+  cp "$SRC/wcfsetup/setup/db/install_com.woltlab.wcf.php" "$PKG/acp/database/"
+fi
 mkdir -p "$SRC/wcfsetup/install/packages"
 pack "$SRC/wcfsetup/install/packages/com.woltlab.wcf.tar" "$PKG"
 
@@ -36,7 +39,7 @@ tar -czf "$OUT/WCFSetup.tar.gz" -C "$SRC/wcfsetup" install setup
 cp "$SRC/wcfsetup/install.php" "$SRC/wcfsetup/test.php" "$OUT/"
 
 # one archive with everything the installation needs (needs `zip`, present on the CI runner)
-BUNDLE="WoltLabSuite-6.3-testbuild.zip"
+BUNDLE="${BUNDLE:-WoltLabSuite-6.3-testbuild.zip}"
 if command -v zip >/dev/null 2>&1; then
   (cd "$OUT" && rm -f "$BUNDLE" && zip -q -9 "$BUNDLE" install.php test.php WCFSetup.tar.gz)
 else
